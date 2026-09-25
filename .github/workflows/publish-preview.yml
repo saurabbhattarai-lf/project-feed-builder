@@ -32,7 +32,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: preview-bundle
-          path: artifact/preview-bundle
+          path: artifacts/10856570581
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Install publisher dependencies
@@ -40,4 +40,4 @@ jobs:
       - name: Synchronize portfolio feed
         env:
           PORTFOLIO_SYNC_TOKEN: ${{ secrets.PORTFOLIO_SYNC_TOKEN }}
-        run: node scripts/publish-preview.mjs artifact/preview-bundle
+        run: node scripts/publish-preview.mjs artifacts/10856570581
